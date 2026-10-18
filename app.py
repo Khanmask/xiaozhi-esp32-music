@@ -1,6 +1,7 @@
 import os
 import yt_dlp
-from flask import Flask, redirect, request
+import requests
+from flask import Flask, Response, request
 
 app = Flask(__name__)
 
@@ -10,7 +11,6 @@ def stream_audio():
     if not song_name:
         return "No song provided", 400
 
-    # Search SoundCloud instead of YouTube (Zero IP blocks!)
     ydl_opts = {
         "format": "bestaudio/best",
         "quiet": True,
@@ -25,10 +25,18 @@ def stream_audio():
             
             if "entries" in info and info["entries"]:
                 entry = info["entries"][0]
-                stream_url = entry.get("url")
+                audio_url = entry.get("url")
                 
-                if stream_url:
-                    return redirect(stream_url, code=302)
+                if audio_url:
+                    # Stream the audio chunks directly from the source to the client
+                    def generate():
+                        # Stream in chunks so it starts instantly without buttons
+                        external_stream = requests.get(audio_url, stream=True)
+                        for chunk in external_stream.iter_content(chunk_size=4096):
+                            if chunk:
+                                yield chunk
+
+                    return Response(generate(), mimetype="audio/mpeg")
                     
     except Exception as e:
         return f"Error: {str(e)}", 500
