@@ -1,5 +1,6 @@
 import os
 import base64
+import re
 import yt_dlp
 from flask import Flask, redirect, request
 
@@ -10,10 +11,13 @@ cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
 
 if cookies_base64:
     try:
-        # Completely strip all spaces, tabs, and newlines from the environment variable
-        cookies_base64 = "".join(cookies_base64.split())
+        # Strip all whitespace, tabs, newlines, and accidental quotes
+        cookies_base64 = "".join(cookies_base64.split()).strip('"\'')
         
-        # Automatically fix missing padding characters (=) in the base64 string
+        # Keep ONLY valid Base64 characters to completely eliminate padding/character errors
+        cookies_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_base64)
+        
+        # Automatically fix missing padding characters (=)
         missing_padding = len(cookies_base64) % 4
         if missing_padding:
             cookies_base64 += '=' * (4 - missing_padding)
@@ -50,18 +54,15 @@ def stream_audio():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Explicitly force a 1-result search query prefix
             search_query = f"ytsearch1:{song_name}"
-            info = ydl.extract_info(search_query, download=False)
+            info = yt_dlp.YoutubeDL(ydl_opts).extract_info(search_query, download=False)
             
-            # Handle search playlist structure
             if "entries" in info:
                 entries = info["entries"]
                 if entries and len(entries) > 0:
                     direct_audio_url = entries[0]["url"]
                     return redirect(direct_audio_url, code=302)
             elif "url" in info:
-                # Handle direct video match
                 return redirect(info["url"], code=302)
                 
     except Exception as e:
