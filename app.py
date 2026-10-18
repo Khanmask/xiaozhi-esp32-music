@@ -33,7 +33,9 @@ def stream_audio():
         return "No song provided", 400
 
     ydl_opts = {
-        "format": "bestaudio",
+        # Explicitly ask for audio-only streams and bypass non-media entries
+        "format": "bestaudio/best",
+        "extract_flat": False,
         "quiet": True,
         "noplaylist": True,
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
@@ -54,9 +56,16 @@ def stream_audio():
             
             if "entries" in info:
                 entries = info["entries"]
-                if entries and len(entries) > 0:
-                    direct_audio_url = entries[0]["url"]
-                    return redirect(direct_audio_url, code=302)
+                for entry in entries:
+                    # Make sure we grab a valid playable audio URL and skip non-audio items
+                    if entry and "url" in entry:
+                        return redirect(entry["url"], code=302)
+                    elif entry and "id" in entry:
+                        # Fallback to direct video info extraction if URL isn't pre-populated
+                        video_info = ydl.extract_info(f"https://www.youtube.com/watch?v={entry['id']}", download=False)
+                        if "url" in video_info:
+                            return redirect(video_info["url"], code=302)
+                            
             elif "url" in info:
                 return redirect(info["url"], code=302)
                 
