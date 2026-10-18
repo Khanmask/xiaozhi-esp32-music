@@ -2,6 +2,7 @@ import os
 import re
 import yt_dlp
 import requests
+from urllib.parse import quote
 from flask import Flask, jsonify, request, Response, stream_with_context
 
 app = Flask(__name__)
@@ -12,11 +13,9 @@ def stream_meta():
     if not raw_song:
         return jsonify({"error": "No song provided"}), 400
 
-    # Clean up speech-to-text artifacts
     clean_song = re.sub(r'[\s+]+', ' ', raw_song).strip()
-
-    # Point the audio_url to our proxy endpoint on Render
-    proxy_url = f"https://xiaozhi-esp32-music.onrender.com/stream_bytes?song={clean_song}"
+    encoded_song = quote(clean_song)
+    proxy_url = f"https://xiaozhi-esp32-music.onrender.com/stream_bytes?song={encoded_song}"
 
     return jsonify({
         "audio_url": proxy_url,
@@ -31,8 +30,9 @@ def stream_bytes():
     if not song_name:
         return "No song provided", 400
 
+    # Force yt_dlp to strictly target MP3 progressive audio streams
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=mp3]/best",
         "quiet": True,
         "noplaylist": True,
         "default_search": "scsearch1",
@@ -42,27 +42,24 @@ def stream_bytes():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = yt_dlp.YoutubeDL(ydl_opts).extract_info(f"scsearch1:{song_name}", download=False)
+            info = ydl.extract_info(f"scsearch1:{song_name}", download=False)
             if info and "entries" in info and len(info["entries"]) > 0:
                 entry = info["entries"][0]
                 if entry:
                     stream_url = entry.get("url")
                     
-                    # Look for a direct non-m3u8 audio format if available in formats
+                    # Scan formats to find a direct MP3 stream link if available
                     if "formats" in entry:
                         for fmt in entry["formats"]:
-                            if fmt.get("vcodec") == "none" and fmt.get("acodec") != "none":
-                                proto = fmt.get("protocol", "")
-                                if "m3u8" not in proto and "http" in proto:
-                                    stream_url = fmt.get("url")
-                                    break
+                            if fmt.get("ext") == "mp3" and fmt.get("url"):
+                                stream_url = fmt.get("url")
+                                break
 
                     if stream_url:
-                        # Proxy the audio stream directly to the ESP32
                         req = requests.get(stream_url, stream=True, timeout=15)
                         return Response(
                             stream_with_context(req.iter_content(chunk_size=4096)),
-                            content_type=req.headers.get("content-type", "audio/mpeg")
+                            content_type="audio/mpeg"
                         )
                         
     except Exception as e:
