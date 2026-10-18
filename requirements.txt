@@ -3,3 +3,4 @@ gunicorn
 yt-dlp
 requests
 imageio-ffmpeg
+websockets
