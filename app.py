@@ -1,9 +1,20 @@
 import os
+import base64
 import yt_dlp
 from flask import Flask, redirect, request
 
 app = Flask(__name__)
 
+# Handle Render's ephemeral filesystem by writing cookies dynamically on startup
+COOKIE_PATH = "/tmp/cookies.txt"
+cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
+
+if cookies_base64:
+    try:
+        with open(COOKIE_PATH, "wb") as f:
+            f.write(base64.b64decode(cookies_base64))
+    except Exception as e:
+        print(f"Failed to decode cookies: {e}")
 
 @app.route("/stream_pcm", methods=["GET"])
 def stream_audio():
@@ -16,6 +27,8 @@ def stream_audio():
         "quiet": True,
         "noplaylist": True,
         "default_search": "ytsearch1",
+        # Pass the decoded cookie file if it exists
+        "cookiefile": COOKIE_PATH if cookies_base64 and os.path.exists(COOKIE_PATH) else None,
     }
 
     try:
@@ -34,4 +47,4 @@ def stream_audio():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5005))
     app.run(host="0.0.0.0", port=port)
-  
+    
