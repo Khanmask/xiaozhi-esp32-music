@@ -1,7 +1,5 @@
 flask
 gunicorn
 yt-dlp
-websockets
 requests
-
-
+imageio-ffmpeg
