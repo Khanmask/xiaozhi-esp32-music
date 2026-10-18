@@ -4,11 +4,11 @@ from flask import Flask, redirect, request
 
 app = Flask(__name__)
 
-# Public, reliable Invidious instances that provide direct audio streams freely
-INVIDIOUS_INSTANCES = [
-    "https://invidious.perennialte.ch",
-    "https://vid.priv.au",
-    "https://invidious.projectsegfault.net"
+# Public Piped API instances (alternative YouTube frontends)
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://pipedapi.in.projectsegfault.net",
+    "https://piped-api.garudalinux.org"
 ]
 
 @app.route("/stream_pcm", methods=["GET"])
@@ -19,33 +19,40 @@ def stream_audio():
 
     direct_audio_url = None
 
-    # Try searching via public Invidious instances
-    for instance in INVIDIOUS_INSTANCES:
+    for instance in PIPED_INSTANCES:
         try:
-            search_url = f"{instance}/api/v1/search?q={song_name}&type=video"
+            # Search for the video on Piped
+            search_url = f"{instance}/search?q={song_name}&filter=videos"
             response = requests.get(search_url, timeout=5)
+            
             if response.status_code == 200:
-                results = response.json()
-                if results and len(results) > 0:
-                    video_id = results[0]["videoId"]
+                data = response.json()
+                items = data.get("items", [])
+                
+                if items and len(items) > 0:
+                    # Get the watch URL / ID from the first result
+                    url_path = items[0].get("url", "")
+                    if "v=" in url_path:
+                        video_id = url_path.split("v=")[-1]
+                    else:
+                        continue
+                        
+                    # Fetch streams for this video
+                    streams_url = f"{instance}/streams/{video_id}"
+                    streams_resp = requests.get(streams_url, timeout=5)
                     
-                    # Fetch video details to grab the direct adaptive audio stream
-                    details_url = f"{instance}/api/v1/videos/{video_id}"
-                    details_resp = requests.get(details_url, timeout=5)
-                    if details_resp.status_code == 200:
-                        data = details_resp.json()
-                        adaptive_formats = data.get("adaptiveFormats", [])
+                    if streams_resp.status_code == 200:
+                        stream_data = streams_resp.json()
+                        audio_streams = stream_data.get("audioStreams", [])
                         
-                        # Find an audio-only stream
-                        for fmt in adaptive_formats:
-                            if "audio" in fmt.get("type", "") and "url" in fmt:
-                                direct_audio_url = fmt["url"]
+                        # Find a working audio stream url
+                        if audio_streams:
+                            # Pick the first available audio stream URL
+                            direct_audio_url = audio_streams[0].get("url")
+                            if direct_audio_url:
                                 break
-                        
-                        if direct_audio_url:
-                            break
         except Exception as e:
-            print(f"Instance {instance} failed: {e}")
+            print(f"Piped instance {instance} failed: {e}")
             continue
 
     if direct_audio_url:
