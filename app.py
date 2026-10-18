@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import subprocess
 import yt_dlp
 import requests
@@ -9,12 +10,11 @@ from flask import Flask, jsonify, request, Response, stream_with_context
 
 app = Flask(__name__)
 
-# Get the path to the ffmpeg binary bundled with imageio-ffmpeg
 try:
     FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
-    print(f"FFmpeg binary loaded at: {FFMPEG_PATH}")
+    print(f"FFmpeg binary loaded at: {FFMPEG_PATH}", flush=True)
 except Exception as e:
-    print(f"Failed to load imageio-ffmpeg: {e}")
+    print(f"Failed to load imageio-ffmpeg: {e}", flush=True)
     FFMPEG_PATH = "ffmpeg"
 
 @app.route("/stream_pcm", methods=["GET"])
@@ -27,6 +27,7 @@ def stream_meta():
     encoded_song = quote(clean_song)
     proxy_url = f"https://xiaozhi-esp32-music.onrender.com/stream_bytes?song={encoded_song}"
 
+    print(f"Meta requested for: {clean_song}", flush=True)
     return jsonify({
         "audio_url": proxy_url,
         "title": clean_song,
@@ -39,6 +40,8 @@ def stream_bytes():
     song_name = request.args.get("song", "")
     if not song_name:
         return "No song provided", 400
+
+    print(f"Streaming bytes requested for: {song_name}", flush=True)
 
     ydl_opts = {
         "format": "bestaudio/best",
@@ -56,9 +59,9 @@ def stream_bytes():
                 entry = info["entries"][0]
                 if entry:
                     source_url = entry.get("url")
+                    print(f"Resolved source URL: {source_url}", flush=True)
 
                     if source_url:
-                        # Use universal '-acodec mp3' instead of 'libmp3lame'
                         ffmpeg_cmd = [
                             FFMPEG_PATH,
                             "-reconnect", "1",
@@ -73,10 +76,11 @@ def stream_bytes():
                             "pipe:1"
                         ]
 
+                        print("Starting FFmpeg subprocess...", flush=True)
                         process = subprocess.Popen(
                             ffmpeg_cmd,
                             stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,  # Capture stderr for troubleshooting
+                            stderr=subprocess.PIPE,
                             bufsize=10 ** 6
                         )
 
@@ -85,14 +89,14 @@ def stream_bytes():
                                 while True:
                                     chunk = process.stdout.read(4096)
                                     if not chunk:
-                                        # Log any stderr output if ffmpeg dies early
                                         err = process.stderr.read().decode('utf-8', errors='ignore')
                                         if err:
-                                            print(f"FFmpeg Stderr: {err}")
+                                            print(f"FFmpeg Stderr Error: {err}", flush=True)
                                         break
                                     yield chunk
                             finally:
                                 process.kill()
+                                print("FFmpeg process terminated.", flush=True)
 
                         return Response(
                             stream_with_context(generate_mp3()),
@@ -100,7 +104,7 @@ def stream_bytes():
                         )
 
     except Exception as e:
-        print(f"Transcode Error: {str(e)}")
+        print(f"Transcode Critical Error: {str(e)}", flush=True)
         return str(e), 500
 
     return "Song not found", 404
