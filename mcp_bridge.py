@@ -66,7 +66,7 @@ async def connect_mcp():
                         await ws.send(json.dumps(init_response))
                         print("Sent initialize response! 🤝")
 
-                    # Handle tool discovery with a UNIQUE name to avoid redundancy
+                    # Handle tool discovery with a unique name
                     elif method == "tools/list":
                         response_msg = {
                             "jsonrpc": "2.0",
@@ -88,9 +88,9 @@ async def connect_mcp():
                             "id": req_id
                         }
                         await ws.send(json.dumps(response_msg))
-                        print("Sent tools/list response with unique name! 🎶")
+                        print("Sent tools/list response! 🎶")
 
-                    # Handle tool execution when called
+                    # Handle tool execution when called by Lily
                     elif method == "tools/call":
                         params = data.get("params", {})
                         tool_name = params.get("name")
@@ -105,7 +105,17 @@ async def connect_mcp():
                                 "jsonrpc": "2.0",
                                 "result": {
                                     "content": [
-                                        {"type": "text", "text": f"Playing: {stream_url}"}
+                                        {
+                                            "type": "text", 
+                                            "text": f"Found {song}. Playing now!"
+                                        },
+                                        {
+                                            "type": "resource_link",
+                                            "uri": stream_url,
+                                            "name": song,
+                                            "description": f"Audio stream for {song}",
+                                            "mimeType": "audio/mpeg"
+                                        }
                                     ]
                                 },
                                 "id": req_id
@@ -118,4 +128,4 @@ async def connect_mcp():
 
 if __name__ == "__main__":
     asyncio.run(connect_mcp())
-        
+                                            
