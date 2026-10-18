@@ -11,8 +11,13 @@ cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
 
 if cookies_base64:
     try:
+        # Strip all whitespace, tabs, newlines, and accidental quotes
         cookies_base64 = "".join(cookies_base64.split()).strip('"\'')
+        
+        # Keep ONLY valid Base64 characters to completely eliminate padding/character errors
         cookies_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_base64)
+        
+        # Automatically fix missing padding characters (=)
         missing_padding = len(cookies_base64) % 4
         if missing_padding:
             cookies_base64 += '=' * (4 - missing_padding)
@@ -33,9 +38,7 @@ def stream_audio():
         return "No song provided", 400
 
     ydl_opts = {
-        # Explicitly ask for audio-only streams and bypass non-media entries
         "format": "bestaudio/best",
-        "extract_flat": False,
         "quiet": True,
         "noplaylist": True,
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
@@ -51,21 +54,17 @@ def stream_audio():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # First, extract just the video ID/URL via search to avoid wrapper/thumbnail bugs
             search_query = f"ytsearch1:{song_name}"
             info = ydl.extract_info(search_query, download=False)
             
-            if "entries" in info:
-                entries = info["entries"]
-                for entry in entries:
-                    # Make sure we grab a valid playable audio URL and skip non-audio items
-                    if entry and "url" in entry:
-                        return redirect(entry["url"], code=302)
-                    elif entry and "id" in entry:
-                        # Fallback to direct video info extraction if URL isn't pre-populated
-                        video_info = ydl.extract_info(f"https://www.youtube.com/watch?v={entry['id']}", download=False)
-                        if "url" in video_info:
-                            return redirect(video_info["url"], code=302)
-                            
+            if "entries" in info and info["entries"]:
+                video_id = info["entries"][0].get("id")
+                if video_id:
+                    # Now fetch the exact playable audio stream using its direct watch URL
+                    direct_info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+                    if "url" in direct_info:
+                        return redirect(direct_info["url"], code=302)
             elif "url" in info:
                 return redirect(info["url"], code=302)
                 
