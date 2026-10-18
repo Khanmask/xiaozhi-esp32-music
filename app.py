@@ -1,31 +1,10 @@
 import os
-import base64
-import re
 import yt_dlp
 from ytmusicapi import YTMusic
 from flask import Flask, redirect, request
 
 app = Flask(__name__)
 ytmusic = YTMusic()
-
-COOKIE_PATH = "/tmp/cookies.txt"
-cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
-
-if cookies_base64:
-    try:
-        cookies_base64 = "".join(cookies_base64.split()).strip('"\'')
-        cookies_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_base64)
-        missing_padding = len(cookies_base64) % 4
-        if missing_padding:
-            cookies_base64 += '=' * (4 - missing_padding)
-
-        cookie_bytes = base64.b64decode(cookies_base64)
-        cookie_text = cookie_bytes.decode("utf-8", errors="ignore")
-        
-        with open(COOKIE_PATH, "w", encoding="utf-8") as f:
-            f.write(cookie_text)
-    except Exception as e:
-        print(f"Failed to setup cookies: {e}")
 
 @app.route("/stream_pcm", methods=["GET"])
 def stream_audio():
@@ -42,18 +21,15 @@ def stream_audio():
         video_id = search_results[0]["videoId"]
         watch_url = f"https://www.youtube.com/watch?v={video_id}"
 
+        # Using Android clients completely bypasses web signature blocks!
         ydl_opts = {
             "format": "bestaudio/best",
             "quiet": True,
             "noplaylist": True,
-            "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["web"]
+                    "player_client": ["android", "android_music", "web"]
                 }
-            },
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
         }
 
