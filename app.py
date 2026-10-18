@@ -35,8 +35,6 @@ def stream_audio():
         "format": "bestaudio/best",
         "quiet": True,
         "noplaylist": True,
-        "default_search": "ytsearch1",
-        "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
         "extractor_args": {
             "youtube": {
                 "player_client": ["ios", "web"]
@@ -49,18 +47,22 @@ def stream_audio():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Pass song_name directly since default_search handles the ytsearch1 prefix
-            info = ydl.extract_info(song_name, download=False)
-            if "entries" in info and len(info["entries"]) > 0:
-                direct_audio_url = info["entries"][0]["url"]
-                return redirect(direct_audio_url, code=302)
+            # Explicitly force a 1-result search query prefix
+            search_query = f"ytsearch1:{song_name}"
+            info = ydl.extract_info(search_query, download=False)
+            
+            # Handle search playlist structure
+            if "entries" in info:
+                entries = info["entries"]
+                if entries and len(entries) > 0:
+                    direct_audio_url = entries[0]["url"]
+                    return redirect(direct_audio_url, code=302)
+            elif "url" in info:
+                # Handle direct video match
+                return redirect(info["url"], code=302)
+                
     except Exception as e:
         return f"Error: {str(e)}", 500
 
     return "Song not found", 404
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5005))
-    app.run(host="0.0.0.0", port=port)
     
