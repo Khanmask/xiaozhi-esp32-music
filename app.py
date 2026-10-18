@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import yt_dlp
+import requests
 from urllib.parse import quote
 from flask import Flask, jsonify, request, Response, stream_with_context
 
@@ -48,39 +49,47 @@ def stream_bytes():
                     source_url = entry.get("url")
 
                     if source_url:
-                        # Launch FFmpeg process to decode source_url and output pure MP3 on stdout
-                        ffmpeg_cmd = [
-                            "ffmpeg",
-                            "-i", source_url,
-                            "-f", "mp3",
-                            "-acodec", "libmp3lame",
-                            "-ab", "128k",
-                            "-ar", "44100",
-                            "-ac", "2",
-                            "pipe:1"
-                        ]
+                        # Attempt FFmpeg live transcoding to MP3
+                        try:
+                            ffmpeg_cmd = [
+                                "ffmpeg",
+                                "-i", source_url,
+                                "-f", "mp3",
+                                "-acodec", "libmp3lame",
+                                "-ab", "128k",
+                                "-ar", "44100",
+                                "-ac", "2",
+                                "pipe:1"
+                            ]
 
-                        process = subprocess.Popen(
-                            ffmpeg_cmd,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL,
-                            bufsize=10 ** 6
-                        )
+                            process = subprocess.Popen(
+                                ffmpeg_cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL,
+                                bufsize=10 ** 6
+                            )
 
-                        def generate_mp3():
-                            try:
-                                while True:
-                                    chunk = process.stdout.read(4096)
-                                    if not chunk:
-                                        break
-                                    yield chunk
-                            finally:
-                                process.kill()
+                            def generate_mp3():
+                                try:
+                                    while True:
+                                        chunk = process.stdout.read(4096)
+                                        if not chunk:
+                                            break
+                                        yield chunk
+                                finally:
+                                    process.kill()
 
-                        return Response(
-                            stream_with_context(generate_mp3()),
-                            content_type="audio/mpeg"
-                        )
+                            return Response(
+                                stream_with_context(generate_mp3()),
+                                content_type="audio/mpeg"
+                            )
+                        except FileNotFoundError:
+                            # Fallback to direct stream if FFmpeg binary isn't present
+                            req = requests.get(source_url, stream=True, timeout=15)
+                            return Response(
+                                stream_with_context(req.iter_content(chunk_size=4096)),
+                                content_type="audio/mpeg"
+                            )
 
     except Exception as e:
         print(f"Transcode Error: {str(e)}")
