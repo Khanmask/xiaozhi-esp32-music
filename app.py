@@ -5,59 +5,58 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-def fetch_audio_info(search_query):
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "quiet": True,
-        "noplaylist": True,
-        "nocheckcertificate": True,
-        "ignoreerrors": True,
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(search_query, download=False)
-        if info and "entries" in info and len(info["entries"]) > 0:
-            entry = info["entries"][0]
-            if entry:
-                stream_url = entry.get("url")
-                
-                # Filter out m3u8 playlists if a direct HTTP stream format exists
-                if "formats" in entry:
-                    for fmt in entry["formats"]:
-                        if fmt.get("vcodec") == "none" and fmt.get("acodec") != "none":
-                            protocol = fmt.get("protocol", "")
-                            if "m3u8" not in protocol and "http" in protocol:
-                                stream_url = fmt.get("url")
-                                break
-                                
-                if stream_url:
-                    return {
-                        "audio_url": stream_url,
-                        "title": entry.get("title", search_query),
-                        "artist": entry.get("uploader", "Unknown"),
-                        "lyric_url": ""
-                    }
-    return None
-
 @app.route("/stream_pcm", methods=["GET"])
 def stream_audio():
     raw_song = request.args.get("song", "")
     if not raw_song:
         return jsonify({"error": "No song provided"}), 400
 
-    # Clean up weird speech-to-text spacing (e.g., "J+H+O+N" -> "J H O N")
     clean_song = re.sub(r'[\s+]+', ' ', raw_song).strip()
 
-    try:
-        # 1. Try YouTube search first for direct progressive streams
-        result = fetch_audio_info(f"ytsearch1:{clean_song}")
-        
-        # 2. If YouTube fails, fallback to SoundCloud search
-        if not result:
-            result = fetch_audio_info(f"scsearch1:{clean_song}")
+    # Configure yt_dlp to look specifically for direct progressive audio formats
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "noplaylist": True,
+        "default_search": "ytsearch1", # Prioritize YouTube for direct streams
+        "nocheckcertificate": True,
+        "ignoreerrors": True,
+    }
 
-        if result:
-            return jsonify(result)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch1:{clean_song}", download=False)
+            
+            stream_url = None
+            title = clean_song
+            artist = "Unknown"
+
+            if info and "entries" in info and len(info["entries"]) > 0:
+                entry = info["entries"][0]
+                if entry:
+                    title = entry.get("title", clean_song)
+                    artist = entry.get("uploader", "Unknown")
+                    
+                    # Search through available formats for a direct link (non-m3u8)
+                    if "formats" in entry:
+                        for fmt in entry["formats"]:
+                            if fmt.get("vcodec") == "none" and fmt.get("acodec") != "none":
+                                protocol = fmt.get("protocol", "")
+                                if "m3u8" not in protocol:
+                                    stream_url = fmt.get("url")
+                                    break
+                    
+                    # Fallback to default entry URL if no direct format matched
+                    if not stream_url:
+                        stream_url = entry.get("url")
+
+            if stream_url and "m3u8" not in stream_url:
+                return jsonify({
+                    "audio_url": stream_url,
+                    "title": title,
+                    "artist": artist,
+                    "lyric_url": ""
+                })
 
     except Exception as e:
         print(f"Render Error: {str(e)}")
