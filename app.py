@@ -1,7 +1,7 @@
 import os
 import re
+import subprocess
 import yt_dlp
-import requests
 from urllib.parse import quote
 from flask import Flask, jsonify, request, Response, stream_with_context
 
@@ -30,9 +30,8 @@ def stream_bytes():
     if not song_name:
         return "No song provided", 400
 
-    # Command yt_dlp to extract raw http/https progressive streams and skip m3u8
     ydl_opts = {
-        "format": "bestaudio[protocol^=http][protocol!=m3u8_native]/bestaudio",
+        "format": "bestaudio/best",
         "quiet": True,
         "noplaylist": True,
         "default_search": "scsearch1",
@@ -46,32 +45,45 @@ def stream_bytes():
             if info and "entries" in info and len(info["entries"]) > 0:
                 entry = info["entries"][0]
                 if entry:
-                    stream_url = None
-                    
-                    # Explicitly iterate formats to pick one that DOES NOT use m3u8
-                    formats = entry.get("formats", [])
-                    for fmt in formats:
-                        proto = fmt.get("protocol", "")
-                        url = fmt.get("url", "")
-                        # Reject m3u8 manifests completely
-                        if "m3u8" not in proto and "m3u8" not in url and url.startswith("http"):
-                            stream_url = url
-                            break
-                    
-                    if not stream_url:
-                        # Fallback if no non-m3u8 format was isolated
-                        stream_url = entry.get("url")
+                    source_url = entry.get("url")
 
-                    if stream_url:
-                        req = requests.get(stream_url, stream=True, timeout=15)
-                        # Ensure we don't pass text/plain or m3u8 content types
+                    if source_url:
+                        # Launch FFmpeg process to decode source_url and output pure MP3 on stdout
+                        ffmpeg_cmd = [
+                            "ffmpeg",
+                            "-i", source_url,
+                            "-f", "mp3",
+                            "-acodec", "libmp3lame",
+                            "-ab", "128k",
+                            "-ar", "44100",
+                            "-ac", "2",
+                            "pipe:1"
+                        ]
+
+                        process = subprocess.Popen(
+                            ffmpeg_cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL,
+                            bufsize=10 ** 6
+                        )
+
+                        def generate_mp3():
+                            try:
+                                while True:
+                                    chunk = process.stdout.read(4096)
+                                    if not chunk:
+                                        break
+                                    yield chunk
+                            finally:
+                                process.kill()
+
                         return Response(
-                            stream_with_context(req.iter_content(chunk_size=4096)),
+                            stream_with_context(generate_mp3()),
                             content_type="audio/mpeg"
                         )
-                        
+
     except Exception as e:
-        print(f"Proxy Error: {str(e)}")
+        print(f"Transcode Error: {str(e)}")
         return str(e), 500
 
     return "Song not found", 404
