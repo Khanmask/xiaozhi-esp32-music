@@ -10,41 +10,36 @@ def stream_audio():
     if not song_name:
         return jsonify({"error": "No song provided"}), 400
 
-    # Switching to YouTube search forces direct progressive audio streams over m3u8 playlists!
+    # Clean, simple options to prevent Render/yt_dlp from throwing a 500 error
     ydl_opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio/best",
+        "format": "bestaudio/best",
         "quiet": True,
         "noplaylist": True,
-        "default_search": "ytsearch1"
+        "default_search": "scsearch1",
+        "nocheckcertificate": True,
+        "ignoreerrors": True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            search_query = f"ytsearch1:{song_name}"
+            search_query = f"scsearch1:{song_name}"
             info = ydl.extract_info(search_query, download=False)
             
-            if "entries" in info and info["entries"]:
+            if info and "entries" in info and len(info["entries"]) > 0:
                 entry = info["entries"][0]
-                
-                stream_url = entry.get("url")
-                
-                # Pick direct audio containers over m3u8 playlists if present
-                if "formats" in entry:
-                    for fmt in entry["formats"]:
-                        if fmt.get("vcodec") == "none" and fmt.get("acodec") != "none":
-                            if "m3u8" not in fmt.get("protocol", ""):
-                                stream_url = fmt.get("url")
-                                break
-
-                if stream_url:
-                    return jsonify({
-                        "audio_url": stream_url,
-                        "title": entry.get("title", song_name),
-                        "artist": entry.get("uploader", "Unknown"),
-                        "lyric_url": ""
-                    })
+                if entry:
+                    stream_url = entry.get("url")
                     
+                    if stream_url:
+                        return jsonify({
+                            "audio_url": stream_url,
+                            "title": entry.get("title", song_name),
+                            "artist": entry.get("uploader", "Unknown"),
+                            "lyric_url": ""
+                        })
+                        
     except Exception as e:
+        print(f"Server Error: {str(e)}")  # Logs details in Render dashboard
         return jsonify({"error": str(e)}), 500
 
     return jsonify({"error": "Song not found"}), 404
