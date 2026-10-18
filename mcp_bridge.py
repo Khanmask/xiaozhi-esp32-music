@@ -2,8 +2,29 @@ import asyncio
 import websockets
 import json
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# Your Xiaozhi WebSocket Endpoint
+# Dummy HTTP server to satisfy Render's Free Web Service port requirement
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Xiaozhi MCP Bridge is running!")
+
+    def log_message(self, format, *args):
+        return
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
+
+# Run the HTTP server in the background thread
+threading.Thread(target=run_dummy_server, daemon=True).start()
+
+# --- Xiaozhi MCP WebSocket Logic ---
 XIAOZHI_WSS_URL = os.environ.get("XIAOZHI_WSS_URL", "wss://api.xiaozhi.me/mcp/YOUR_TOKEN_HERE")
 RENDER_MUSIC_URL = os.environ.get("RENDER_MUSIC_URL", "https://xiaozhi-esp32-music.onrender.com/stream_pcm?song=")
 
@@ -14,7 +35,7 @@ async def connect_mcp():
             async with websockets.connect(XIAOZHI_WSS_URL, ping_interval=20, ping_timeout=20) as ws:
                 print("Connected to Xiaozhi MCP Server! 🚀")
                 
-                # 1. Register play_music tool with Lily
+                # Register play_music tool with Lily
                 register_msg = {
                     "jsonrpc": "2.0",
                     "method": "tools/register",
@@ -33,7 +54,7 @@ async def connect_mcp():
                 }
                 await ws.send(json.dumps(register_msg))
 
-                # 2. Listen for voice commands from Lily
+                # Listen for commands from Lily
                 while True:
                     raw_msg = await ws.recv()
                     data = json.loads(raw_msg)
@@ -48,7 +69,6 @@ async def connect_mcp():
                         
                         stream_url = f"{RENDER_MUSIC_URL}{song.replace(' ', '%20')}"
                         
-                        # Return audio stream link to Lily
                         response_msg = {
                             "jsonrpc": "2.0",
                             "result": {
@@ -66,4 +86,4 @@ async def connect_mcp():
 
 if __name__ == "__main__":
     asyncio.run(connect_mcp())
-  
+    
