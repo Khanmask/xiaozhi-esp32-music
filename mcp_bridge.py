@@ -21,11 +21,9 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
     server.serve_forever()
 
-# Run the HTTP server in the background thread
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# --- Xiaozhi MCP WebSocket Logic ---
-XIAOZHI_WSS_URL = os.environ.get("XIAOZHI_WSS_URL", "wss://api.xiaozhi.me/mcp/YOUR_TOKEN_HERE")
+XIAOZHI_WSS_URL = os.environ.get("XIAOZHI_WSS_URL", "")
 RENDER_MUSIC_URL = os.environ.get("RENDER_MUSIC_URL", "https://xiaozhi-esp32-music.onrender.com/stream_pcm?song=")
 
 async def connect_mcp():
@@ -35,38 +33,45 @@ async def connect_mcp():
             async with websockets.connect(XIAOZHI_WSS_URL, ping_interval=20, ping_timeout=20) as ws:
                 print("Connected to Xiaozhi MCP Server! 🚀")
                 
-                # Register play_music tool with Lily
-                register_msg = {
-                    "jsonrpc": "2.0",
-                    "method": "tools/register",
-                    "params": {
-                        "name": "play_music",
-                        "description": "Searches and plays a song using direct audio streaming.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "song_name": {"type": "string", "description": "The name of the song requested"}
-                            },
-                            "required": ["song_name"]
-                        }
-                    },
-                    "id": 1
-                }
-                await ws.send(json.dumps(register_msg))
-
-                # Listen for commands from Lily
                 while True:
                     raw_msg = await ws.recv()
                     data = json.loads(raw_msg)
+                    print(f"Received message: {data}")
                     
-                    if data.get("method") == "tools/call":
-                        req_id = data.get("id")
+                    method = data.get("method")
+                    req_id = data.get("id")
+
+                    # Handle tool discovery / listing request from Xiaozhi
+                    if method == "tools/list":
+                        response_msg = {
+                            "jsonrpc": "2.0",
+                            "result": {
+                                "tools": [
+                                    {
+                                        "name": "play_music",
+                                        "description": "Searches and plays a song using direct audio streaming.",
+                                        "inputSchema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "song_name": {"type": "string", "description": "The name of the song requested"}
+                                            },
+                                            "required": ["song_name"]
+                                        }
+                                    }
+                                ]
+                            },
+                            "id": req_id
+                        }
+                        await ws.send(json.dumps(response_msg))
+                        print("Sent tools/list response! 🎶")
+
+                    # Handle actual tool execution when Lily calls it
+                    elif method == "tools/call":
                         params = data.get("params", {})
                         args = params.get("arguments", {})
                         song = args.get("song_name", "")
 
                         print(f"Lily requested song: {song}")
-                        
                         stream_url = f"{RENDER_MUSIC_URL}{song.replace(' ', '%20')}"
                         
                         response_msg = {
