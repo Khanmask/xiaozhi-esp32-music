@@ -11,13 +11,8 @@ cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
 
 if cookies_base64:
     try:
-        # Strip all whitespace, tabs, newlines, and accidental quotes
         cookies_base64 = "".join(cookies_base64.split()).strip('"\'')
-        
-        # Keep ONLY valid Base64 characters to completely eliminate padding/character errors
         cookies_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_base64)
-        
-        # Automatically fix missing padding characters (=)
         missing_padding = len(cookies_base64) % 4
         if missing_padding:
             cookies_base64 += '=' * (4 - missing_padding)
@@ -38,7 +33,7 @@ def stream_audio():
         return "No song provided", 400
 
     ydl_opts = {
-        "format": "best",  # Fallback to general best format to bypass strict audio-only filtering
+        # Format restriction removed completely so yt-dlp uses the default native stream
         "quiet": True,
         "noplaylist": True,
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
