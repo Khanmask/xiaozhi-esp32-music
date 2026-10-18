@@ -33,7 +33,8 @@ def stream_audio():
         return "No song provided", 400
 
     ydl_opts = {
-        # Format restriction removed completely so yt-dlp uses the default native stream
+        # Force a flexible format fallback that accepts any available stream tier
+        "format": "best/bestaudio",
         "quiet": True,
         "noplaylist": True,
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
