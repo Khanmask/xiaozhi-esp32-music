@@ -9,8 +9,13 @@ from flask import Flask, jsonify, request, Response, stream_with_context
 
 app = Flask(__name__)
 
-# Get the path to the ffmpeg executable bundled with imageio-ffmpeg
-FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+# Get the path to the ffmpeg binary bundled with imageio-ffmpeg
+try:
+    FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+    print(f"FFmpeg binary loaded at: {FFMPEG_PATH}")
+except Exception as e:
+    print(f"Failed to load imageio-ffmpeg: {e}")
+    FFMPEG_PATH = "ffmpeg"
 
 @app.route("/stream_pcm", methods=["GET"])
 def stream_meta():
@@ -53,12 +58,15 @@ def stream_bytes():
                     source_url = entry.get("url")
 
                     if source_url:
-                        # Stream and transcode on the fly to MP3 using bundled FFmpeg
+                        # Use universal '-acodec mp3' instead of 'libmp3lame'
                         ffmpeg_cmd = [
                             FFMPEG_PATH,
+                            "-reconnect", "1",
+                            "-reconnect_streamed", "1",
+                            "-reconnect_delay_max", "5",
                             "-i", source_url,
                             "-f", "mp3",
-                            "-acodec", "libmp3lame",
+                            "-acodec", "mp3",
                             "-ab", "128k",
                             "-ar", "44100",
                             "-ac", "2",
@@ -68,7 +76,7 @@ def stream_bytes():
                         process = subprocess.Popen(
                             ffmpeg_cmd,
                             stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE,  # Capture stderr for troubleshooting
                             bufsize=10 ** 6
                         )
 
@@ -77,6 +85,10 @@ def stream_bytes():
                                 while True:
                                     chunk = process.stdout.read(4096)
                                     if not chunk:
+                                        # Log any stderr output if ffmpeg dies early
+                                        err = process.stderr.read().decode('utf-8', errors='ignore')
+                                        if err:
+                                            print(f"FFmpeg Stderr: {err}")
                                         break
                                     yield chunk
                             finally:
