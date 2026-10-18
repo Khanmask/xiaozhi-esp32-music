@@ -1,7 +1,6 @@
 import os
-import requests
 import yt_dlp
-from flask import Flask, Response, request
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
@@ -9,7 +8,7 @@ app = Flask(__name__)
 def stream_audio():
     song_name = request.args.get("song", "")
     if not song_name:
-        return "No song provided", 400
+        return jsonify({"error": "No song provided"}), 400
 
     ydl_opts = {
         "format": "bestaudio/best",
@@ -28,18 +27,17 @@ def stream_audio():
                 stream_url = entry.get("url")
                 
                 if stream_url:
-                    # Stream the audio chunks directly through Render via a 200 OK response
-                    upstream = requests.get(stream_url, stream=True, timeout=15)
-                    return Response(
-                        upstream.iter_content(chunk_size=1024),
-                        content_type=upstream.headers.get("content-type", "audio/octet-stream"),
-                        status=200
-                    )
+                    # Return a JSON payload that the firmware can successfully parse!
+                    return jsonify({
+                        "url": stream_url,
+                        "title": entry.get("title", song_name),
+                        "artist": entry.get("uploader", "Unknown")
+                    })
                     
     except Exception as e:
-        return f"Error: {str(e)}", 500
+        return jsonify({"error": str(e)}), 500
 
-    return "Song not found on SoundCloud", 404
+    return jsonify({"error": "Song not found on SoundCloud"}), 404
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5005))
