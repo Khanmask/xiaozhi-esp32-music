@@ -38,11 +38,10 @@ def stream_audio():
         return "No song provided", 400
 
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "ba/b",  # Flexible audio format selection to catch available streams
         "quiet": True,
         "noplaylist": True,
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
-        # Use web client first to handle text searches properly, falling back to ios/mweb
         "extractor_args": {
             "youtube": {
                 "player_client": ["web", "mweb", "ios"]
