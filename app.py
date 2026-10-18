@@ -5,16 +5,18 @@ from flask import Flask, redirect, request
 
 app = Flask(__name__)
 
-# Handle Render's ephemeral filesystem by writing cookies dynamically on startup
+# Handle Render's ephemeral filesystem by writing cookies safely as raw bytes
 COOKIE_PATH = "/tmp/cookies.txt"
 cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
 
 if cookies_base64:
     try:
+        # Decode base64 directly into raw binary bytes
+        cookie_bytes = base64.b64decode(cookies_base64.encode("utf-8") if isinstance(cookies_base64, str) else cookies_base64)
         with open(COOKIE_PATH, "wb") as f:
-            f.write(base64.b64decode(cookies_base64))
+            f.write(cookie_bytes)
     except Exception as e:
-        print(f"Failed to decode cookies: {e}")
+        print(f"Failed to setup cookies: {e}")
 
 @app.route("/stream_pcm", methods=["GET"])
 def stream_audio():
@@ -27,8 +29,8 @@ def stream_audio():
         "quiet": True,
         "noplaylist": True,
         "default_search": "ytsearch1",
-        # Pass the decoded cookie file if it exists
-        "cookiefile": COOKIE_PATH if cookies_base64 and os.path.exists(COOKIE_PATH) else None,
+        # Only pass cookiefile if the file actually exists and isn't empty
+        "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
     }
 
     try:
