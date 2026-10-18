@@ -33,7 +33,7 @@ def stream_audio():
         return "No song provided", 400
 
     ydl_opts = {
-        "format": "bestaudio",  # Pure audio stream; avoids needing FFmpeg to merge video/audio
+        "format": "bestaudio",
         "quiet": True,
         "noplaylist": True,
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
