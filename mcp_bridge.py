@@ -5,7 +5,7 @@ import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# Dummy HTTP server to satisfy Render's Free Web Service port requirement
+# 1. HTTP Server to satisfy Render's port check
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -16,19 +16,27 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
-def run_dummy_server():
+def run_http_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    print(f"HTTP health-check server running on port {port}")
     server.serve_forever()
 
-threading.Thread(target=run_dummy_server, daemon=True).start()
+# Start the HTTP server in a separate background thread
+threading.Thread(target=run_http_server, daemon=True).start()
 
+# 2. WebSocket MCP Client Loop
 XIAOZHI_WSS_URL = os.environ.get("XIAOZHI_WSS_URL", "")
 RENDER_MUSIC_URL = os.environ.get("RENDER_MUSIC_URL", "https://xiaozhi-esp32-music.onrender.com/stream_pcm?song=")
 
 async def connect_mcp():
     while True:
         try:
+            if not XIAOZHI_WSS_URL:
+                print("Error: XIAOZHI_WSS_URL is empty!")
+                await asyncio.sleep(10)
+                continue
+
             print("Connecting to Xiaozhi MCP Server...")
             async with websockets.connect(XIAOZHI_WSS_URL, ping_interval=20, ping_timeout=20) as ws:
                 print("Connected to Xiaozhi MCP Server! 🚀")
@@ -36,12 +44,11 @@ async def connect_mcp():
                 while True:
                     raw_msg = await ws.recv()
                     data = json.loads(raw_msg)
-                    print(f"Received message: {data}")
+                    print(f"Received: {data}")
                     
                     method = data.get("method")
                     req_id = data.get("id")
 
-                    # Handle tool discovery / listing request from Xiaozhi
                     if method == "tools/list":
                         response_msg = {
                             "jsonrpc": "2.0",
@@ -65,7 +72,6 @@ async def connect_mcp():
                         await ws.send(json.dumps(response_msg))
                         print("Sent tools/list response! 🎶")
 
-                    # Handle actual tool execution when Lily calls it
                     elif method == "tools/call":
                         params = data.get("params", {})
                         args = params.get("arguments", {})
@@ -86,9 +92,10 @@ async def connect_mcp():
                         await ws.send(json.dumps(response_msg))
 
         except Exception as e:
-            print(f"Connection lost ({e}). Reconnecting in 5 seconds...")
+            print(f"WebSocket connection error: {e}. Reconnecting in 5 seconds...")
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
+    # Run the asyncio WebSocket loop in the main thread
     asyncio.run(connect_mcp())
     
