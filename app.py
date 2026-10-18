@@ -42,20 +42,21 @@ def stream_audio():
         "quiet": True,
         "noplaylist": True,
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
+        # Use web client first to handle text searches properly, falling back to ios/mweb
         "extractor_args": {
             "youtube": {
-                "player_client": ["ios", "web"]
+                "player_client": ["web", "mweb", "ios"]
             }
         },
         "http_headers": {
-            "User-Agent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             search_query = f"ytsearch1:{song_name}"
-            info = yt_dlp.YoutubeDL(ydl_opts).extract_info(search_query, download=False)
+            info = ydl.extract_info(search_query, download=False)
             
             if "entries" in info:
                 entries = info["entries"]
