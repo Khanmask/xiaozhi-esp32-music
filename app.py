@@ -10,7 +10,6 @@ cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
 
 if cookies_base64:
     try:
-        # Decode base64 to bytes, then decode to text while ignoring invalid bytes
         cookie_bytes = base64.b64decode(cookies_base64)
         cookie_text = cookie_bytes.decode("utf-8", errors="ignore")
         
@@ -31,6 +30,10 @@ def stream_audio():
         "noplaylist": True,
         "default_search": "ytsearch1",
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
+        # Mimic a real browser user-agent to bypass data-center IP flags
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
     }
 
     try:
