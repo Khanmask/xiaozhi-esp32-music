@@ -1,15 +1,31 @@
 import os
-import requests
+import base64
+import re
+import yt_dlp
+from ytmusicapi import YTMusic
 from flask import Flask, redirect, request
 
 app = Flask(__name__)
+ytmusic = YTMusic()
 
-# Public Piped API instances (alternative YouTube frontends)
-PIPED_INSTANCES = [
-    "https://pipedapi.kavin.rocks",
-    "https://pipedapi.in.projectsegfault.net",
-    "https://piped-api.garudalinux.org"
-]
+COOKIE_PATH = "/tmp/cookies.txt"
+cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
+
+if cookies_base64:
+    try:
+        cookies_base64 = "".join(cookies_base64.split()).strip('"\'')
+        cookies_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_base64)
+        missing_padding = len(cookies_base64) % 4
+        if missing_padding:
+            cookies_base64 += '=' * (4 - missing_padding)
+
+        cookie_bytes = base64.b64decode(cookies_base64)
+        cookie_text = cookie_bytes.decode("utf-8", errors="ignore")
+        
+        with open(COOKIE_PATH, "w", encoding="utf-8") as f:
+            f.write(cookie_text)
+    except Exception as e:
+        print(f"Failed to setup cookies: {e}")
 
 @app.route("/stream_pcm", methods=["GET"])
 def stream_audio():
@@ -17,48 +33,39 @@ def stream_audio():
     if not song_name:
         return "No song provided", 400
 
-    direct_audio_url = None
-
-    for instance in PIPED_INSTANCES:
-        try:
-            # Search for the video on Piped
-            search_url = f"{instance}/search?q={song_name}&filter=videos"
-            response = requests.get(search_url, timeout=5)
+    try:
+        # Search via YouTube Music API (super clean and stable)
+        search_results = ytmusic.search(song_name, filter="songs")
+        if not search_results:
+            return "Song not found", 404
             
-            if response.status_code == 200:
-                data = response.json()
-                items = data.get("items", [])
+        video_id = search_results[0]["videoId"]
+        watch_url = f"https://www.youtube.com/watch?v={video_id}"
+
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "quiet": True,
+            "noplaylist": True,
+            "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["web"]
+                }
+            },
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(watch_url, download=False)
+            if "url" in info:
+                return redirect(info["url"], code=302)
                 
-                if items and len(items) > 0:
-                    # Get the watch URL / ID from the first result
-                    url_path = items[0].get("url", "")
-                    if "v=" in url_path:
-                        video_id = url_path.split("v=")[-1]
-                    else:
-                        continue
-                        
-                    # Fetch streams for this video
-                    streams_url = f"{instance}/streams/{video_id}"
-                    streams_resp = requests.get(streams_url, timeout=5)
-                    
-                    if streams_resp.status_code == 200:
-                        stream_data = streams_resp.json()
-                        audio_streams = stream_data.get("audioStreams", [])
-                        
-                        # Find a working audio stream url
-                        if audio_streams:
-                            # Pick the first available audio stream URL
-                            direct_audio_url = audio_streams[0].get("url")
-                            if direct_audio_url:
-                                break
-        except Exception as e:
-            print(f"Piped instance {instance} failed: {e}")
-            continue
+    except Exception as e:
+        return f"Error: {str(e)}", 500
 
-    if direct_audio_url:
-        return redirect(direct_audio_url, code=302)
-
-    return "Song not found or streams blocked", 404
+    return "Stream URL not found", 404
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5005))
