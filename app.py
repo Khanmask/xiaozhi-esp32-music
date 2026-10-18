@@ -10,18 +10,19 @@ def stream_audio():
     if not song_name:
         return jsonify({"error": "No song provided"}), 400
 
-    # Force yt_dlp to look for direct progressive audio formats instead of HLS playlists
+    # Using YouTube search to fetch direct progressive audio links instead of HLS playlists
     ydl_opts = {
-        "format": "bestaudio[ext=mp3]/bestaudio[ext=m4a]/bestaudio/best",
+        "format": "bestaudio/best",
         "quiet": True,
         "noplaylist": True,
-        "default_search": "scsearch1",
-        "extract_flat": False,
+        "default_search": "ytsearch1",
+        "nocheckcertificate": True,
+        "ignoreerrors": True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            search_query = f"scsearch1:{song_name}"
+            search_query = f"ytsearch1:{song_name}"
             info = ydl.extract_info(search_query, download=False)
             
             if info and "entries" in info and len(info["entries"]) > 0:
@@ -29,15 +30,6 @@ def stream_audio():
                 if entry:
                     stream_url = entry.get("url")
                     
-                    # If formats list is available, extract a direct non-m3u8 audio link
-                    if "formats" in entry:
-                        for fmt in entry["formats"]:
-                            if fmt.get("vcodec") == "none" and fmt.get("acodec") != "none":
-                                protocol = fmt.get("protocol", "")
-                                if "m3u8" not in protocol and "http" in protocol:
-                                    stream_url = fmt.get("url")
-                                    break
-
                     if stream_url:
                         return jsonify({
                             "audio_url": stream_url,
@@ -47,6 +39,7 @@ def stream_audio():
                         })
                         
     except Exception as e:
+        print(f"Render Server Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
     return jsonify({"error": "Song not found"}), 404
