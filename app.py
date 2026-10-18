@@ -49,7 +49,8 @@ def stream_audio():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch1:{song_name}", download=False)
+            # Pass song_name directly since default_search handles the ytsearch1 prefix
+            info = ydl.extract_info(song_name, download=False)
             if "entries" in info and len(info["entries"]) > 0:
                 direct_audio_url = info["entries"][0]["url"]
                 return redirect(direct_audio_url, code=302)
