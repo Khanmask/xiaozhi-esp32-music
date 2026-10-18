@@ -19,10 +19,8 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 def run_http_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    print(f"HTTP health-check server running on port {port}")
     server.serve_forever()
 
-# Start the HTTP server in a separate background thread
 threading.Thread(target=run_http_server, daemon=True).start()
 
 # 2. WebSocket MCP Client Loop
@@ -49,7 +47,27 @@ async def connect_mcp():
                     method = data.get("method")
                     req_id = data.get("id")
 
-                    if method == "tools/list":
+                    # Handle MCP Initialization handshake
+                    if method == "initialize":
+                        init_response = {
+                            "jsonrpc": "2.0",
+                            "result": {
+                                "protocolVersion": "2024-11-05",
+                                "capabilities": {
+                                    "tools": {}
+                                },
+                                "serverInfo": {
+                                    "name": "music-bridge",
+                                    "version": "1.0.0"
+                                }
+                            },
+                            "id": req_id
+                        }
+                        await ws.send(json.dumps(init_response))
+                        print("Sent initialize response! 🤝")
+
+                    # Handle tool discovery / listing request from Xiaozhi
+                    elif method == "tools/list":
                         response_msg = {
                             "jsonrpc": "2.0",
                             "result": {
@@ -72,6 +90,7 @@ async def connect_mcp():
                         await ws.send(json.dumps(response_msg))
                         print("Sent tools/list response! 🎶")
 
+                    # Handle actual tool execution when Lily calls it
                     elif method == "tools/call":
                         params = data.get("params", {})
                         args = params.get("arguments", {})
@@ -96,6 +115,5 @@ async def connect_mcp():
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    # Run the asyncio WebSocket loop in the main thread
     asyncio.run(connect_mcp())
     
