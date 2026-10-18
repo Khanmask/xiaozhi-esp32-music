@@ -1,15 +1,8 @@
 import os
-import requests
+import yt_dlp
 from flask import Flask, redirect, request
 
 app = Flask(__name__)
-
-# Active public Piped API mirrors
-PIPED_APIS = [
-    "https://pipedapi.kavin.rocks",
-    "https://api.piped.yt",
-    "https://pipedapi.privacy.com.de"
-]
 
 @app.route("/stream_pcm", methods=["GET"])
 def stream_audio():
@@ -17,36 +10,43 @@ def stream_audio():
     if not song_name:
         return "No song provided", 400
 
-    direct_audio_url = None
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "noplaylist": True,
+        # The embedded web player client bypasses standard datacenter blocks
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web_embedded"]
+            }
+        },
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+    }
 
-    for api in PIPED_APIS:
-        try:
-            # 1. Search for the song
-            search_res = requests.get(f"{api}/search?q={song_name}&filter=videos", timeout=4)
-            if search_res.status_code == 200:
-                items = search_res.json().get("items", [])
-                if items:
-                    url_path = items[0].get("url", "")
-                    if "v=" in url_path:
-                        video_id = url_path.split("v=")[-1]
-                        
-                        # 2. Fetch stream details using the video ID
-                        stream_res = requests.get(f"{api}/streams/{video_id}", timeout=4)
-                        if stream_res.status_code == 200:
-                            audio_streams = stream_res.json().get("audioStreams", [])
-                            if audio_streams:
-                                # Pick the first available audio stream URL
-                                direct_audio_url = audio_streams[0].get("url")
-                                if direct_audio_url:
-                                    break
-        except Exception as e:
-            print(f"Mirror {api} failed: {e}")
-            continue
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            search_query = f"ytsearch1:{song_name}"
+            info = ydl.extract_info(search_query, download=False)
+            
+            if "entries" in info and info["entries"]:
+                entry = info["entries"][0]
+                stream_url = entry.get("url")
+                
+                # If direct URL wasn't in the search wrapper, resolve via watch ID
+                if not stream_url and "id" in entry:
+                    video_id = entry["id"]
+                    direct_info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+                    stream_url = direct_info.get("url")
+                
+                if stream_url:
+                    return redirect(stream_url, code=302)
+                    
+    except Exception as e:
+        return f"Error: {str(e)}", 500
 
-    if direct_audio_url:
-        return redirect(direct_audio_url, code=302)
-
-    return "Stream lookup failed, please try again", 504
+    return "Song lookup failed", 404
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5005))
