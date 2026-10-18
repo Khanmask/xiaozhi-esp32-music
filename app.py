@@ -10,14 +10,13 @@ def stream_audio():
     if not song_name:
         return jsonify({"error": "No song provided"}), 400
 
-    # Clean, simple options to prevent Render/yt_dlp from throwing a 500 error
+    # Force yt_dlp to look for direct progressive audio formats instead of HLS playlists
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=mp3]/bestaudio[ext=m4a]/bestaudio/best",
         "quiet": True,
         "noplaylist": True,
         "default_search": "scsearch1",
-        "nocheckcertificate": True,
-        "ignoreerrors": True,
+        "extract_flat": False,
     }
 
     try:
@@ -30,6 +29,15 @@ def stream_audio():
                 if entry:
                     stream_url = entry.get("url")
                     
+                    # If formats list is available, extract a direct non-m3u8 audio link
+                    if "formats" in entry:
+                        for fmt in entry["formats"]:
+                            if fmt.get("vcodec") == "none" and fmt.get("acodec") != "none":
+                                protocol = fmt.get("protocol", "")
+                                if "m3u8" not in protocol and "http" in protocol:
+                                    stream_url = fmt.get("url")
+                                    break
+
                     if stream_url:
                         return jsonify({
                             "audio_url": stream_url,
@@ -39,7 +47,6 @@ def stream_audio():
                         })
                         
     except Exception as e:
-        print(f"Server Error: {str(e)}")  # Logs details in Render dashboard
         return jsonify({"error": str(e)}), 500
 
     return jsonify({"error": "Song not found"}), 404
