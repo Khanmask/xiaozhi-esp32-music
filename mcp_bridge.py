@@ -66,15 +66,15 @@ async def connect_mcp():
                         await ws.send(json.dumps(init_response))
                         print("Sent initialize response! 🤝")
 
-                    # Handle tool discovery / listing request from Xiaozhi
+                    # Handle tool discovery with a UNIQUE name to avoid redundancy
                     elif method == "tools/list":
                         response_msg = {
                             "jsonrpc": "2.0",
                             "result": {
                                 "tools": [
                                     {
-                                        "name": "play_music",
-                                        "description": "Searches and plays a song using direct audio streaming.",
+                                        "name": "stream_custom_song",
+                                        "description": "Searches and plays custom songs using direct audio streaming proxy.",
                                         "inputSchema": {
                                             "type": "object",
                                             "properties": {
@@ -88,27 +88,29 @@ async def connect_mcp():
                             "id": req_id
                         }
                         await ws.send(json.dumps(response_msg))
-                        print("Sent tools/list response! 🎶")
+                        print("Sent tools/list response with unique name! 🎶")
 
-                    # Handle actual tool execution when Lily calls it
+                    # Handle tool execution when called
                     elif method == "tools/call":
                         params = data.get("params", {})
+                        tool_name = params.get("name")
                         args = params.get("arguments", {})
-                        song = args.get("song_name", "")
-
-                        print(f"Lily requested song: {song}")
-                        stream_url = f"{RENDER_MUSIC_URL}{song.replace(' ', '%20')}"
                         
-                        response_msg = {
-                            "jsonrpc": "2.0",
-                            "result": {
-                                "content": [
-                                    {"type": "text", "text": f"Playing: {stream_url}"}
-                                ]
-                            },
-                            "id": req_id
-                        }
-                        await ws.send(json.dumps(response_msg))
+                        if tool_name == "stream_custom_song":
+                            song = args.get("song_name", "")
+                            print(f"Lily requested custom song stream: {song}")
+                            stream_url = f"{RENDER_MUSIC_URL}{song.replace(' ', '%20')}"
+                            
+                            response_msg = {
+                                "jsonrpc": "2.0",
+                                "result": {
+                                    "content": [
+                                        {"type": "text", "text": f"Playing: {stream_url}"}
+                                    ]
+                                },
+                                "id": req_id
+                            }
+                            await ws.send(json.dumps(response_msg))
 
         except Exception as e:
             print(f"WebSocket connection error: {e}. Reconnecting in 5 seconds...")
@@ -116,4 +118,4 @@ async def connect_mcp():
 
 if __name__ == "__main__":
     asyncio.run(connect_mcp())
-    
+        
