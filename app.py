@@ -28,9 +28,7 @@ def stream_audio():
                 audio_url = entry.get("url")
                 
                 if audio_url:
-                    # Stream the audio chunks directly from the source to the client
                     def generate():
-                        # Stream in chunks so it starts instantly without buttons
                         external_stream = requests.get(audio_url, stream=True)
                         for chunk in external_stream.iter_content(chunk_size=4096):
                             if chunk:
