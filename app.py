@@ -39,7 +39,7 @@ def stream_audio():
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web", "mweb", "ios"]
+                "player_client": ["web"]
             }
         },
         "http_headers": {
