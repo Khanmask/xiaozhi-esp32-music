@@ -1,35 +1,15 @@
 import os
-import base64
-import re
-import yt_dlp
+import requests
 from flask import Flask, redirect, request
 
 app = Flask(__name__)
 
-COOKIE_PATH = "/tmp/cookies.txt"
-cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
-
-if cookies_base64:
-    try:
-        # Strip all whitespace, tabs, newlines, and accidental quotes
-        cookies_base64 = "".join(cookies_base64.split()).strip('"\'')
-        
-        # Keep ONLY valid Base64 characters to completely eliminate padding/character errors
-        cookies_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', cookies_base64)
-        
-        # Automatically fix missing padding characters (=)
-        missing_padding = len(cookies_base64) % 4
-        if missing_padding:
-            cookies_base64 += '=' * (4 - missing_padding)
-
-        cookie_bytes = base64.b64decode(cookies_base64)
-        cookie_text = cookie_bytes.decode("utf-8", errors="ignore")
-        
-        with open(COOKIE_PATH, "w", encoding="utf-8") as f:
-            f.write(cookie_text)
-        print("Cookies successfully written to /tmp/cookies.txt")
-    except Exception as e:
-        print(f"Failed to setup cookies: {e}")
+# Public, reliable Invidious instances that provide direct audio streams freely
+INVIDIOUS_INSTANCES = [
+    "https://invidious.perennialte.ch",
+    "https://vid.priv.au",
+    "https://invidious.projectsegfault.net"
+]
 
 @app.route("/stream_pcm", methods=["GET"])
 def stream_audio():
@@ -37,42 +17,41 @@ def stream_audio():
     if not song_name:
         return "No song provided", 400
 
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "quiet": True,
-        "noplaylist": True,
-        "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["web"]
-            }
-        },
-        "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-    }
+    direct_audio_url = None
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # First, extract just the video ID/URL via search to avoid wrapper/thumbnail bugs
-            search_query = f"ytsearch1:{song_name}"
-            info = ydl.extract_info(search_query, download=False)
-            
-            if "entries" in info and info["entries"]:
-                video_id = info["entries"][0].get("id")
-                if video_id:
-                    # Now fetch the exact playable audio stream using its direct watch URL
-                    direct_info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-                    if "url" in direct_info:
-                        return redirect(direct_info["url"], code=302)
-            elif "url" in info:
-                return redirect(info["url"], code=302)
-                
-    except Exception as e:
-        return f"Error: {str(e)}", 500
+    # Try searching via public Invidious instances
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            search_url = f"{instance}/api/v1/search?q={song_name}&type=video"
+            response = requests.get(search_url, timeout=5)
+            if response.status_code == 200:
+                results = response.json()
+                if results and len(results) > 0:
+                    video_id = results[0]["videoId"]
+                    
+                    # Fetch video details to grab the direct adaptive audio stream
+                    details_url = f"{instance}/api/v1/videos/{video_id}"
+                    details_resp = requests.get(details_url, timeout=5)
+                    if details_resp.status_code == 200:
+                        data = details_resp.json()
+                        adaptive_formats = data.get("adaptiveFormats", [])
+                        
+                        # Find an audio-only stream
+                        for fmt in adaptive_formats:
+                            if "audio" in fmt.get("type", "") and "url" in fmt:
+                                direct_audio_url = fmt["url"]
+                                break
+                        
+                        if direct_audio_url:
+                            break
+        except Exception as e:
+            print(f"Instance {instance} failed: {e}")
+            continue
 
-    return "Song not found", 404
+    if direct_audio_url:
+        return redirect(direct_audio_url, code=302)
 
+    return "Song not found or streams blocked", 404
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5005))
