@@ -30,7 +30,12 @@ def stream_audio():
         "noplaylist": True,
         "default_search": "ytsearch1",
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
-        # Mimic a real browser user-agent to bypass data-center IP flags
+        # Force yt-dlp to use the Android and Web client combo to slip past data-center blocks
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"]
+            }
+        },
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
