@@ -37,8 +37,8 @@ def stream_audio():
     if not song_name:
         return "No song provided", 400
 
-    ydl_opts = {
-        "format": "ba/b",  # Flexible audio format selection to catch available streams
+        ydl_opts = {
+        "format": "best",  # Fallback to general best format to bypass strict audio-only filtering
         "quiet": True,
         "noplaylist": True,
         "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
@@ -50,7 +50,8 @@ def stream_audio():
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-    }
+        }
+        
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
