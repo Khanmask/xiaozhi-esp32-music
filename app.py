@@ -1,6 +1,7 @@
 import os
+import requests
 import yt_dlp
-from flask import Flask, redirect, request
+from flask import Flask, Response, request
 
 app = Flask(__name__)
 
@@ -27,7 +28,13 @@ def stream_audio():
                 stream_url = entry.get("url")
                 
                 if stream_url:
-                    return redirect(stream_url, code=302)
+                    # Stream the audio chunks directly through Render via a 200 OK response
+                    upstream = requests.get(stream_url, stream=True, timeout=15)
+                    return Response(
+                        upstream.iter_content(chunk_size=1024),
+                        content_type=upstream.headers.get("content-type", "audio/octet-stream"),
+                        status=200
+                    )
                     
     except Exception as e:
         return f"Error: {str(e)}", 500
