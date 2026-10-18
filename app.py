@@ -27,11 +27,12 @@ def stream_audio():
                 stream_url = entry.get("url")
                 
                 if stream_url:
-                    # Return a JSON payload that the firmware can successfully parse!
+                    # Returning "audio_url" so your ESP32 firmware catches it perfectly!
                     return jsonify({
-                        "url": stream_url,
+                        "audio_url": stream_url,
                         "title": entry.get("title", song_name),
-                        "artist": entry.get("uploader", "Unknown")
+                        "artist": entry.get("uploader", "Unknown"),
+                        "lyric_url": ""
                     })
                     
     except Exception as e:
