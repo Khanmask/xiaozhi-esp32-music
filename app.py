@@ -30,9 +30,9 @@ def stream_bytes():
     if not song_name:
         return "No song provided", 400
 
-    # Force yt_dlp to strictly target MP3 progressive audio streams
+    # Command yt_dlp to extract raw http/https progressive streams and skip m3u8
     ydl_opts = {
-        "format": "bestaudio[ext=mp3]/best",
+        "format": "bestaudio[protocol^=http][protocol!=m3u8_native]/bestaudio",
         "quiet": True,
         "noplaylist": True,
         "default_search": "scsearch1",
@@ -46,17 +46,25 @@ def stream_bytes():
             if info and "entries" in info and len(info["entries"]) > 0:
                 entry = info["entries"][0]
                 if entry:
-                    stream_url = entry.get("url")
+                    stream_url = None
                     
-                    # Scan formats to find a direct MP3 stream link if available
-                    if "formats" in entry:
-                        for fmt in entry["formats"]:
-                            if fmt.get("ext") == "mp3" and fmt.get("url"):
-                                stream_url = fmt.get("url")
-                                break
+                    # Explicitly iterate formats to pick one that DOES NOT use m3u8
+                    formats = entry.get("formats", [])
+                    for fmt in formats:
+                        proto = fmt.get("protocol", "")
+                        url = fmt.get("url", "")
+                        # Reject m3u8 manifests completely
+                        if "m3u8" not in proto and "m3u8" not in url and url.startswith("http"):
+                            stream_url = url
+                            break
+                    
+                    if not stream_url:
+                        # Fallback if no non-m3u8 format was isolated
+                        stream_url = entry.get("url")
 
                     if stream_url:
                         req = requests.get(stream_url, stream=True, timeout=15)
+                        # Ensure we don't pass text/plain or m3u8 content types
                         return Response(
                             stream_with_context(req.iter_content(chunk_size=4096)),
                             content_type="audio/mpeg"
