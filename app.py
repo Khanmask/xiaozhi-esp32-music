@@ -10,8 +10,10 @@ cookies_base64 = os.environ.get("YT_COOKIES_BASE64")
 
 if cookies_base64:
     try:
+        # Completely strip all spaces, tabs, and newlines from the environment variable
+        cookies_base64 = "".join(cookies_base64.split())
+        
         # Automatically fix missing padding characters (=) in the base64 string
-        cookies_base64 = cookies_base64.strip()
         missing_padding = len(cookies_base64) % 4
         if missing_padding:
             cookies_base64 += '=' * (4 - missing_padding)
@@ -35,6 +37,7 @@ def stream_audio():
         "format": "bestaudio/best",
         "quiet": True,
         "noplaylist": True,
+        "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) and os.path.getsize(COOKIE_PATH) > 0 else None,
         "extractor_args": {
             "youtube": {
                 "player_client": ["ios", "web"]
@@ -65,4 +68,9 @@ def stream_audio():
         return f"Error: {str(e)}", 500
 
     return "Song not found", 404
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5005))
+    app.run(host="0.0.0.0", port=port)
     
